@@ -194,6 +194,3 @@ maxmcode|40960
 + 特权进程不监听任何虚拟服务器端口号，且和 master 进程有相同的权限，参考 `https://github.com/openresty/lua-resty-core/blob/master/lib/ngx/process.md#enable_privileged_agent`
 
 + 函数 process.enable_privileged_agent() 使用上下文是 init_by_lua， 也会在 init_by_worker 阶段执行，可以用 process.type() 函数判断自己是否是特权进程。参考 `https://github.com/openresty/lua-resty-core/blob/master/lib/ngx/process.md#type`
-
-
-电脑端可查看 `https://github.com/HelloBug0/APISIX-NOTES/blob/main/init_phase/init_by_lua_block.md`
