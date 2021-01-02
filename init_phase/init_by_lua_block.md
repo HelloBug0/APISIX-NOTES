@@ -35,7 +35,7 @@ require "resty.core"
 + 当前 Openresty 版本是默认使用 lua-resty-core ，可通过以下方法验证 Openresty 版本是否默认使用 lua-resty-core.
 1. nginx.conf 未显示指定`require "resty.core"`
 
-2. 将环境中的 resty.core 重命名未 resty.core.1
+2. 将环境中的 resty.core 重命名为 resty.core.1
      `mv /usr/local/openresty/lualib/resty/core.lua /usr/local/openresty/lualib/resty/core.lua.1`
 
 3.  启动 openresty ，显示以下错误： 
@@ -194,4 +194,3 @@ maxmcode|40960
 + 特权进程不监听任何虚拟服务器端口号，且和 master 进程有相同的权限，参考：https://github.com/openresty/lua-resty-core/blob/master/lib/ngx/process.md#enable_privileged_agent
 
 + 函数 process.enable_privileged_agent() 使用上下文是 init_by_lua， 也会在 init_by_worker 阶段执行，可以用 process.type() 函数判断自己是否是特权进程。参考：https://github.com/openresty/lua-resty-core/blob/master/lib/ngx/process.md#type
-
