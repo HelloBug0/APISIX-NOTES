@@ -514,11 +514,26 @@ end
 
 
 function _M.new(key, opts)
+    -- 获得配置文件信息
     local local_conf, err = config_local.local_conf()
     if not local_conf then
         return nil, err
     end
 
+    -- 获得配置文件中etcd相关的配置
+    --[[ 默认配置如下：
+etcd:
+  host:                           # it's possible to define multiple etcd hosts addresses of the same etcd cluster.
+    - "http://127.0.0.1:2379"     # multiple etcd address, if your etcd cluster enables TLS, please use https scheme,
+                                  # e.g. "https://127.0.0.1:2379".
+  prefix: "/apisix"               # apisix configurations prefix
+  timeout: 30                     # 30 seconds
+  # user: root                    # root username for etcd
+  # password: 5tHkHhYkjr6cQY      # root password for etcd
+  tls:
+      verify: true                # whether to verify the etcd endpoint certificate when setup a TLS connection to etcd,
+                                  # the default value is true, e.g. the certificate will be verified strictly.
+    ]]
     local etcd_conf = clone_tab(local_conf.etcd)
     local prefix = etcd_conf.prefix
     etcd_conf.http_host = etcd_conf.host
@@ -528,16 +543,17 @@ function _M.new(key, opts)
     etcd_conf.api_prefix = "/v3"
     etcd_conf.ssl_verify = true
 
+    -- 是否对etcd进行鉴权
     -- default to verify etcd cluster certificate
     if etcd_conf.tls and etcd_conf.tls.verify == false then
         etcd_conf.ssl_verify = false
     end
 
-    local automatic = opts and opts.automatic
-    local item_schema = opts and opts.item_schema
-    local filter_fun = opts and opts.filter
-    local timeout = opts and opts.timeout
-    local single_item = opts and opts.single_item
+    local automatic = opts and opts.automatic -- 监听etcd数据的变更，更新本地配置
+    local item_schema = opts and opts.item_schema -- json语法定义表，用于检查json是否符合定义
+    local filter_fun = opts and opts.filter -- 过滤函数，具体用法稍后详解
+    local timeout = opts and opts.timeout -- 监听etcd数据变更时，未检测到数据变更的超时时间，该时间之后，函数返回
+    local single_item = opts and opts.single_item -- 监听etcd的数据，该数据是单独的key，还是该key所在的目录
 
     local obj = setmetatable({
         etcd_cli = nil,
@@ -559,14 +575,14 @@ function _M.new(key, opts)
         filter = filter_fun,
     }, mt)
 
-    if automatic then
+    if automatic then -- 自动监听etcd数据的变化，由于访问etcd的操作，不能在init_worker阶段执行，所以使用定时器达到目的
         if not key then
             return nil, "missing `key` argument"
         end
 
         ngx_timer_at(0, _automatic_fetch, obj)
 
-    else
+    else -- 获得etcd句柄，让用户自己利用该句柄去获得etcd数据？目前没有用到此处逻辑？
         local etcd_cli, err = etcd.new(etcd_conf)
         if not etcd_cli then
             return nil, "failed to start a etcd instance: " .. err
