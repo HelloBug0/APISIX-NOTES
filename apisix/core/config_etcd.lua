@@ -103,6 +103,10 @@ local function readdir(etcd_cli, key)
     return res
 end
 
+--[[ 读取版本为modified_index的key，读超时为timeout秒
+对该函数的理解需要参考：https://github.com/api7/lua-resty-etcd/
+可参考APISX-NOTES目录下lua-resty-etcd-master对该库的相关注释
+]]
 local function waitdir(etcd_cli, key, modified_index, timeout)
     if not etcd_cli then
         return nil, nil, "not inited"
@@ -169,7 +173,7 @@ end
 
 local function sync_data(self)
     if not self.key then
-        return nil, "missing 'key' arguments"
+        return nil, "missing 'key' arguments" -- 第一个返回值使用false更好
     end
 
     if self.need_reload then
@@ -463,11 +467,24 @@ local function _automatic_fetch(premature, self)
     end
 
     local i = 0
+    --[[ exiting 即ngx.worker.exiting() 返回一个boolean值, 表明当前当前工作进程是否已经存在，
+    如果是在重新加载或者关闭过程中，则视为不存在。
+    自己之前在开发过程中有需要用到这个函数功能的场景，即判断执行到当前函数时，是否是在reload,
+    当时因为不知道这个函数，利用共享内存里的变量在reload时不会重启的特性来判断的是否是reload。
+    更好的思路应该是查找是否有对应功能的函数，其次是向官方提出这个需求，或者自己开发出该API。
+    因为自己用到，别人也很有可能用到。]]
+
+    -- 循环条件：如果是在重启，而且当前工作进程正在运行，且i满足条件则循环执行
+    -- 这里为什么要使用循环条件self.running呢？
+    -- 如果在循环之后会再次调用_automatic_fetch， 为什么还要设置循环呢，本身定时器就是一个循环不是吗？
+    -- 如果一定要用循环的话，循环32次是如何确定的？为什么不是16次，20次？
+    -- 已向APISIX社区提issue，地址：https://github.com/apache/apisix/issues/3229
     while not exiting() and self.running and i <= 32 do
         i = i + 1
 
         local ok, err = xpcall(function()
             if not self.etcd_cli then
+                -- 创建访问etcd的句柄
                 local etcd_cli, err = etcd.new(self.etcd_conf)
                 if not etcd_cli then
                     error("failed to create etcd instance for key ["
@@ -476,6 +493,8 @@ local function _automatic_fetch(premature, self)
                 self.etcd_cli = etcd_cli
             end
 
+            -- 从etcd中同步信息，同步key为self.key
+            -- sync_data 执行成功返回true, 执行失败返回nil/false，有时false后面会返回错误信息，有时不会返回
             local ok, err = sync_data(self)
             if err then
                 if err ~= "timeout" and err ~= "Key not found"
@@ -484,14 +503,17 @@ local function _automatic_fetch(premature, self)
                               tostring(self))
                 end
 
+                -- 记录最后一次的错误信息，并保存错误发生的时间
                 if err ~= self.last_err then
                     self.last_err = err
                     self.last_err_time = ngx_time()
-                else
+                elseif then -- 如果错误保存的时间超过30s，则清空错误信息，也就是说只保存30s内的错误
                     if ngx_time() - self.last_err_time >= 30 then
                         self.last_err = nil
                     end
                 end
+            -- 满足以下两个睡眠条件之一都有函数执行失败，如果返回了错误信息，睡眠0.5秒，如果没有返回错误信息，睡眠0.05秒
+            -- 为什么睡眠时间这样安排，具体看sync_data返回值
                 ngx_sleep(0.5)
             elseif not ok then
                 ngx_sleep(0.05)
@@ -499,7 +521,7 @@ local function _automatic_fetch(premature, self)
 
         end, debug.traceback)
 
-        if not ok then
+        if not ok then -- 如果函数执行失败，睡眠3s，跳出循环
             log.error("failed to fetch data from etcd: ", err, ", ",
                       tostring(self))
             ngx_sleep(3)
@@ -507,6 +529,7 @@ local function _automatic_fetch(premature, self)
         end
     end
 
+    -- 设置定时器，继续执行函数_automatic_fetch
     if not exiting() and self.running then
         ngx_timer_at(0, _automatic_fetch, self)
     end
