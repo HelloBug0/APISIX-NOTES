@@ -103,6 +103,7 @@ end
 
 
 function _M.new(opts)
+    -- 获得参数
     local timeout    = opts.timeout
     local ttl        = opts.ttl
     local api_prefix = opts.api_prefix
@@ -113,6 +114,7 @@ function _M.new(opts)
     local ssl_verify = opts.ssl_verify
     local serializer = opts.serializer
 
+    -- 校验参数的合法性
     if not typeof.uint(timeout) then
         return nil, 'opts.timeout must be unsigned integer'
     end
@@ -143,9 +145,9 @@ function _M.new(opts)
 
     local endpoints = {}
     local http_hosts
-    if type(http_host) == 'string' then -- signle node
+    if type(http_host) == 'string' then -- signle node -- 单机
         http_hosts = {http_host}
-    else
+    else -- 集群
         http_hosts = http_host
     end
 
@@ -190,7 +192,7 @@ function _M.new(opts)
         mt)
 end
 
-
+--[[ 循环选择终端，使用init_count进行轮询操作，INIT_COUNT_RESIZE取值如何确定的？]]
 local function choose_endpoint(self)
     local endpoints = self.endpoints
     local endpoints_len = #endpoints
@@ -500,6 +502,8 @@ local function txn(self, opts_arg, compare, success, failure)
 end
 
 
+--[[ 建立http连接，发送http请求
+]]
 local function request_chunk(self, method, scheme, host, port, path, opts, timeout)
     local body, err, _
     if opts and opts.body and tab_nkeys(opts.body) > 0 then
@@ -619,12 +623,14 @@ local function request_chunk(self, method, scheme, host, port, path, opts, timeo
 end
 
 
+--[[ 将key的最后一个字符修改为下一个字符
+如key = "abc"， 返回值为"abd"]]
 local function get_range_end(key)
     if #key == 0 then
         return str_char(0)
     end
 
-    local last = sub_str(key, -1)
+    local last = sub_str(key, -1) -- 使用str_sub更好
     key = sub_str(key, 1, #key-1)
 
     local ascii = str_byte(last) + 1
@@ -634,12 +640,25 @@ local function get_range_end(key)
 end
 
 
+--[[
+attr设置以下属性
+    attr.range_end = get_range_end(key)
+    attr.start_revision  = opts and opts.start_revision
+    attr.timeout = opts and opts.timeout
+    attr.progress_notify = opts and opts.progress_notify
+    attr.filters  = opts and opts.filters
+    attr.prev_kv  = opts and opts.prev_kv
+    attr.watch_id = opts and opts.watch_id
+    attr.fragment = opts and opts.fragment
+    attr.need_cancel = opts and opts.need_cancel
+]]
 local function watch(self, key, attr)
     -- verify key
     if #key == 0 then
         key = str_char(0)
     end
 
+    -- 对key 和range_end都进行base64编码，why?
     key = encode_base64(key)
 
     local range_end
@@ -647,6 +666,7 @@ local function watch(self, key, attr)
         range_end = encode_base64(attr.range_end)
     end
 
+    -- 以下使用的lua语法，a and b or c == C 语法 a?b:c
     local prev_kv
     if attr.prev_kv then
         prev_kv = attr.prev_kv and true or false
@@ -698,7 +718,7 @@ local function watch(self, key, attr)
         need_cancel = need_cancel,
     }
 
-    local endpoint = choose_endpoint(self)
+    local endpoint = choose_endpoint(self) -- self即连接的etcd句柄
 
     local callback_fun, err, http_cli = request_chunk(self, 'POST',
                                 endpoint.scheme,
@@ -787,6 +807,7 @@ function _M.watchdir(self, key, opts)
     attr.prev_kv  = opts and opts.prev_kv
     attr.watch_id = opts and opts.watch_id
     attr.fragment = opts and opts.fragment
+     -- 在watchdir执行结束之后是否断开watchdir，因为watchdir实现原理是保持一个长连接，一旦发现数据变更，则获得变更事件
     attr.need_cancel = opts and opts.need_cancel
 
     return watch(self, key, attr)

@@ -116,6 +116,7 @@ local function waitdir(etcd_cli, key, modified_index, timeout)
     opts.start_revision = modified_index
     opts.timeout = timeout
     opts.need_cancel = true
+    -- 三个返回值依次是：数据读取函数，错误信息、http连接句柄
     local res_func, func_err, http_cli = etcd_cli:watchdir(key, opts)
     if not res_func then
         return nil, func_err
@@ -123,12 +124,12 @@ local function waitdir(etcd_cli, key, modified_index, timeout)
 
     -- in etcd v3, the 1st res of watch is watch info, useless to us.
     -- try twice to skip create info
-    local res, err = res_func()
+    local res, err = res_func() -- 需要读取两次？
     if not res or not res.result or not res.result.events then
         res, err = res_func()
     end
 
-    if http_cli then
+    if http_cli then -- 断开http连接
         local res_cancel, err_cancel = etcd_cli:watchcancel(http_cli)
         if res_cancel == 1 then
             log.info("cancel watch connection success")
@@ -145,7 +146,7 @@ local function waitdir(etcd_cli, key, modified_index, timeout)
     if type(res.result) ~= "table" then
         return nil, "failed to wait etcd dir"
     end
-    return etcd_apisix.watch_format(res)
+    return etcd_apisix.watch_format(res) -- 格式化请求结果
 end
 
 
@@ -154,6 +155,7 @@ local function short_key(self, str)
 end
 
 
+-- 更新当前key的版本信息
 function _M.upgrade_version(self, new_ver)
     new_ver = tonumber(new_ver)
     if not new_ver then
@@ -176,20 +178,22 @@ local function sync_data(self)
         return nil, "missing 'key' arguments" -- 第一个返回值使用false更好
     end
 
+    -- 第一次调用该函数以及在出错的情况下需要重新读取全部信息，此时self.need_reload = true
     if self.need_reload then
         local res, err = readdir(self.etcd_cli, self.key)
         if not res then
             return false, err
         end
 
+        -- 结果为空
         local dir_res, headers = res.body.node or {}, res.headers
         log.debug("readdir key: ", self.key, " res: ",
                   json.delay_encode(dir_res))
         if not dir_res then
-            return false, err
+            return false, err -- 此处 err 指定类似"empty result"更好？
         end
 
-        if self.values then
+        if self.values then -- 第一次调用时，self.values为空
             for i, val in ipairs(self.values) do
                 if val and val.clean_handlers then
                     for _, clean_handler in ipairs(val.clean_handlers) do
@@ -205,13 +209,14 @@ local function sync_data(self)
 
         local changed = false
 
-        if self.single_item then
+        if self.single_item then -- 当前key为文件
             self.values = new_tab(1, 0)
             self.values_hash = new_tab(0, 1)
 
             local item = dir_res
             local data_valid = item.value ~= nil
 
+            -- 校验key对应的值的语法合法性
             if data_valid and self.item_schema then
                 data_valid, err = check_schema(self.item_schema, item.value)
                 if not data_valid then
@@ -234,7 +239,7 @@ local function sync_data(self)
 
             self:upgrade_version(item.modifiedIndex)
 
-        else
+        else -- 当前key为目录
             if not dir_res.nodes then
                 dir_res.nodes = {}
             end
@@ -242,9 +247,11 @@ local function sync_data(self)
             self.values = new_tab(#dir_res.nodes, 0)
             self.values_hash = new_tab(0, #dir_res.nodes)
 
+            -- 遍历当前目录下的所有文件
             for _, item in ipairs(dir_res.nodes) do
                 local key = short_key(self, item.key)
                 local data_valid = true
+                -- 每个文件的取值必须是table类型
                 if type(item.value) ~= "table" then
                     data_valid = false
                     log.error("invalid item data of [", self.key .. "/" .. key,
@@ -252,6 +259,7 @@ local function sync_data(self)
                               ", it shoud be a object")
                 end
 
+                -- 校验文件对应的值的语法合法性
                 if data_valid and self.item_schema then
                     data_valid, err = check_schema(self.item_schema, item.value)
                     if not data_valid then
@@ -260,6 +268,7 @@ local function sync_data(self)
                     end
                 end
 
+                -- 保存所有的key value
                 if data_valid then
                     changed = true
                     insert_tab(self.values, item)
@@ -281,7 +290,7 @@ local function sync_data(self)
             self:upgrade_version(headers["X-Etcd-Index"])
         end
 
-        if changed then
+        if changed then -- self.conf_version用于判断版本是否变更，如果发生变更，则之后本地的数据需要更新为最新版本
             self.conf_version = self.conf_version + 1
         end
 
@@ -289,16 +298,17 @@ local function sync_data(self)
         return true
     end
 
+    -- 监听key是否有变更，非全量读取
     local dir_res, err = waitdir(self.etcd_cli, self.key, self.prev_index + 1, self.timeout)
     log.info("waitdir key: ", self.key, " prev_index: ", self.prev_index + 1)
     log.info("res: ", json.delay_encode(dir_res, true))
 
     if not dir_res then
-        if err == "compacted" then
+        if err == "compacted" then -- 当出现该错误时，说明监听的key被压缩，需要 重新全量读取数据
             self.need_reload = true
             log.warn("waitdir [", self.key, "] err: ", err,
                      ", need to fully reload")
-            return false
+            return false -- 注意这里没有返回err，使得函数 _automatic_fetch 调用当前函数时，睡眠时间更短
         end
 
         return false, err
@@ -306,7 +316,7 @@ local function sync_data(self)
 
     local res = dir_res.body.node
     local err_msg = dir_res.body.message
-    if err_msg then
+    if err_msg then -- 根据错误信息，确定是否需要重新读取数据
         if err_msg == "The event in requested index is outdated and cleared"
            and dir_res.body.errorCode == 401 then
             self.need_reload = true
@@ -314,7 +324,7 @@ local function sync_data(self)
                      ", need to fully reload")
             return false
         end
-        return false, err
+        return false, err -- 此时err有值吗？还是应该时err_msg?
     end
 
     if not res then
@@ -332,12 +342,14 @@ local function sync_data(self)
     -- waitdir will return [res] even for self.single_item = true
     for _, res in ipairs(res_copy) do
         local key
+        -- 根据文件、目录获得key的真实取值
         if self.single_item then
             key = self.key
         else
             key = short_key(self, res.key)
         end
 
+        -- 校验value的类型合法性
         if res.value and not self.single_item and type(res.value) ~= "table" then
             self:upgrade_version(res.modifiedIndex)
             return false, "invalid item data of [" .. self.key .. "/" .. key
@@ -345,6 +357,7 @@ local function sync_data(self)
                             .. ", it shoud be a object"
         end
 
+        -- 校验语法合法性
         if res.value and self.item_schema then
             local ok, err = check_schema(self.item_schema, res.value)
             if not ok then
@@ -355,8 +368,10 @@ local function sync_data(self)
             end
         end
 
+        -- 更新版本信息
         self:upgrade_version(res.modifiedIndex)
 
+        -- 如果目录下面还有目录，则当前程序还不支持
         if res.dir then
             if res.value then
                 return false, "todo: support for parsing `dir` response "
@@ -365,8 +380,11 @@ local function sync_data(self)
             return false
         end
 
+        -- 以下巧妙的将key value更新到self.values, self.values_hash
+        -- values_hash是一个哈希表，根据key找到key在self.values数组里的下标
         local pre_index = self.values_hash[key]
         if pre_index then
+            -- 获得当前key的下标，取出key上一个版本的取值，在释放时，根据其处理函数，可认为是析构函数（可以为多个），做销毁工作
             local pre_val = self.values[pre_index]
             if pre_val and pre_val.clean_handlers then
                 for _, clean_handler in ipairs(pre_val.clean_handlers) do
@@ -375,6 +393,7 @@ local function sync_data(self)
                 pre_val.clean_handlers = nil
             end
 
+           -- 如果当前key有新值，则覆盖原来取值，设置value的析构函数表为空
             if res.value then
                 if not self.single_item then
                     res.value.id = key
@@ -384,6 +403,7 @@ local function sync_data(self)
                 res.clean_handlers = {}
                 log.info("update data by key: ", key)
 
+            -- 当前key被删除，则从数组self.values和字典self.values_hash删除当前key
             else
                 self.sync_times = self.sync_times + 1
                 self.values[pre_index] = false
@@ -391,6 +411,7 @@ local function sync_data(self)
                 log.info("delete data by key: ", key)
             end
 
+        -- 如果当前key是新增的，则直接插入数组和字典即可
         elseif res.value then
             res.clean_handlers = {}
             insert_tab(self.values, res)
@@ -402,7 +423,8 @@ local function sync_data(self)
             log.info("insert data by key: ", key)
         end
 
-        -- avoid space waste
+        -- avoid space waste、
+        -- 如果删除次数大于100次，则重建数组self.values和字典self.values_hash
         if self.sync_times > 100 then
             local values_original = table.clone(self.values)
             table.clear(self.values)
@@ -605,7 +627,7 @@ etcd:
 
         ngx_timer_at(0, _automatic_fetch, obj)
 
-    else -- 获得etcd句柄，让用户自己利用该句柄去获得etcd数据？目前没有用到此处逻辑？
+    else -- 获得etcd句柄，让用户自己利用该句柄去获得etcd数据？目前代码宏未用到此处逻辑
         local etcd_cli, err = etcd.new(etcd_conf)
         if not etcd_cli then
             return nil, "failed to start a etcd instance: " .. err
