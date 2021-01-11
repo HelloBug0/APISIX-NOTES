@@ -106,6 +106,7 @@ function _M.http_init_worker()
     plugin.init_worker()
     require("apisix.consumer").init_worker()
 
+    -- 如果配置读取方式是通过读取config.yaml文件，而不是通过读取etcd的方式，则设置定时器定时读取配置文件
     if core.config == require("apisix.core.config_yaml") then
         core.config.init_worker()
     end

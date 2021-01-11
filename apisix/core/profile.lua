@@ -26,7 +26,7 @@ local _M = {
 -- 通过增加前缀后缀的方式，获得指定文件名的文件路径
 function _M.yaml_path(self, file_name) -- file_name 仅为文件名称，不包含文件路径
     local file_path = self.apisix_home  .. "conf/" .. file_name -- 设置文件路径
-    -- 若文件名不是 config-default，则为念路径需要添加环境变量 APISIX_PROFILE 指定的文件后缀
+    -- 若文件名不是 config-default，则为该路径添加环境变量 APISIX_PROFILE 指定的文件后缀
     if self.profile and file_name ~= "config-default" then
         file_path = file_path .. "-" .. self.profile
     end

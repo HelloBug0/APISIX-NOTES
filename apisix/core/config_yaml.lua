@@ -61,6 +61,7 @@ local function read_apisix_yaml(premature, pre_mtime)
     if premature then
         return
     end
+    -- 获得文件属性信息，可间接判断文件是否存在
     local attributes, err = lfs.attributes(apisix_yaml_path)
     if not attributes then
         log.error("failed to fetch ", apisix_yaml_path, " attributes: ", err)
@@ -69,6 +70,7 @@ local function read_apisix_yaml(premature, pre_mtime)
 
     -- log.info("change: ", json.encode(attributes))
     local last_change_time = attributes.change
+    -- 判断文件内容是否发生变更
     if apisix_yaml_ctime == last_change_time then
         return
     end
@@ -340,6 +342,7 @@ function _M.fetch_created_obj(key)
 end
 
 
+--[[ 没隔1秒中，读取一次apisix.yaml文件，更新系统配置 ]]
 function _M.init_worker()
     -- sync data in each non-master process
     read_apisix_yaml()

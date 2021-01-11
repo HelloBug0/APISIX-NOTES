@@ -82,6 +82,7 @@ local function filter(service)
 end
 
 
+--[[ 实时监控etcd中/services目录的变化，并将变化后的数据保存在services.values中 ]]
 function _M.init_worker()
     local err
     services, err = core.config.new("/services", {

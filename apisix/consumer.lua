@@ -85,6 +85,7 @@ function _M.consumers()
 end
 
 
+--[[ 实时监控etcd中/consumers目录的变化，并将变化后的数据保存在consumers.values中 ]]
 function _M.init_worker()
     local err
     consumers, err = core.config.new("/consumers", {
