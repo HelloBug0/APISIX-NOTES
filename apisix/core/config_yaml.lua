@@ -57,7 +57,7 @@ local mt = {
 
 local apisix_yaml
 local apisix_yaml_ctime
-local function read_apisix_yaml(premature, pre_mtime)
+local function read_apisix_yaml(premature, pre_mtime) -- pre_mtime 未用到
     if premature then
         return
     end

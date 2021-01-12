@@ -15,6 +15,12 @@
 -- limitations under the License.
 --
 
+--[[ 总体设计思路如下：
+1.每个路由都可以有自己的日志服务器，即不同的路由可以将自己的日志发送到不同的日志服务器上
+2.日志信息根据路由ID进行分类，自己保存自己的日志信息，自己对应自己的日志服务器
+3.每个日志服务器对应一个缓存，缓存大小可用户设置，发送的日志会首先保存至缓存中，待缓存满时将日志发送出去
+4.日志有缓存的同时有一个定时器，定时器定时将缓存里数据发送出去。因为缓存是否满，是在每一次发送日志的时候进行判断的，如果没有定时器的话，而且缓存一直未满，就可能有日志无法发送出去
+]]
 local core = require("apisix.core")
 local log_util = require("apisix.utils.log-util")
 local batch_processor = require("apisix.utils.batch-processor")
@@ -82,6 +88,7 @@ local function send_syslog_data(conf, log_message, api_ctx)
     local err_msg
     local res = true
 
+    -- 从缓存中获得发送日志句柄，如果缓存中不存在，重新创建句柄，并放在缓存中
     -- fetch it from lrucache
     local logger, err = core.lrucache.plugin_ctx(
         lrucache, api_ctx, nil, logger_socket.new, logger_socket, {
@@ -133,6 +140,7 @@ end
 
 -- log phase in APISIX
 function _M.log(conf, ctx)
+    -- 获得需要发送的日志信息，包含请求和响应信息，以及路由相关信息
     local entry = log_util.get_full_log(ngx, conf)
 
     if not entry.route_id then
@@ -142,6 +150,7 @@ function _M.log(conf, ctx)
 
     local log_buffer = buffers[entry.route_id]
 
+    -- 每隔30min清除一次buffers中的过期数据，通过变量stale_time_running取值表明是否有定时器在运行
     if not stale_timer_running then
         -- run the timer every 30 mins if any log is present
         timer_at(1800, remove_stale_objects)

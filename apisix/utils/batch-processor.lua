@@ -23,7 +23,7 @@ local now = ngx.now
 local type = type
 local batch_processor = {}
 local batch_processor_mt = {
-    __index = batch_processor
+    __index = batch_processor -- 如果在索引processor时，没有找到指定的字段，则从batch_processor中查找
 }
 local execute_func
 local create_buffer_timer
@@ -42,6 +42,7 @@ local schema = {
 }
 
 
+-- 设置定时器，执行日志发送函数
 local function schedule_func_exec(self, delay, batch)
     local hdl, err = timer_at(delay, execute_func, self, batch)
     if not hdl then
@@ -56,6 +57,7 @@ function execute_func(premature, self, batch)
         return
     end
 
+    -- 根据函数调用结果和尝试次数，多次调用日志发送函数
     local ok, err = self.func(batch.entries, self.batch_max_size)
     if not ok then
         core.log.error("Batch Processor[", self.name,
@@ -99,6 +101,8 @@ local function flush_buffer(premature, self)
 end
 
 
+-- 通过设置定时器的方式发送日志
+-- 也就是说有两种方式发送日志：定时器的方式和在日志发送的过程，如果缓冲区不够用的话，也会发送日志
 function create_buffer_timer(self)
     local hdl, err = timer_at(self.inactive_timeout, flush_buffer, self)
     if not hdl then
@@ -110,11 +114,13 @@ end
 
 
 function batch_processor:new(func, config)
+    -- 检查config语法是否合法
     local ok, err = core.schema.check(schema, config)
     if not ok then
         return nil, err
     end
 
+    -- 检查函数是否是函数
     if not(type(func) == "function") then
         return nil, "Invalid argument, arg #1 must be a function"
     end
@@ -124,11 +130,11 @@ function batch_processor:new(func, config)
         buffer_duration = config.buffer_duration,
         inactive_timeout = config.inactive_timeout,
         max_retry_count = config.max_retry_count,
-        batch_max_size = config.batch_max_size,
+        batch_max_size = config.batch_max_size, -- entries 中保存的日志最大个数，超出该个数会被发送出去
         retry_delay = config.retry_delay,
         name = config.name,
         batch_to_process = {},
-        entry_buffer = { entries = {}, retry_count = 0},
+        entry_buffer = { entries = {}, retry_count = 0}, -- entries 保存日志信息
         is_timer_running = false,
         first_entry_t = 0,
         last_entry_t = 0
@@ -154,6 +160,7 @@ function batch_processor:push(entry)
     end
     self.last_entry_t = now()
 
+    -- 添加新的日志时，如果超过缓存的最大日志个数，则首先将日志发送出去，然后再缓存新的日志
     if self.batch_max_size <= #entries then
         core.log.debug("Batch Processor[", self.name ,
                        "] batch max size has exceeded")
@@ -166,6 +173,7 @@ function batch_processor:push(entry)
 end
 
 
+-- 批处理日志时，将日志首先发送出去，为之后的日志腾出空间
 function batch_processor:process_buffer()
     -- If entries are present in the buffer move the entries to processing
     if #self.entry_buffer.entries > 0 then

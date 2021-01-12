@@ -21,6 +21,7 @@ local pairs = pairs
 local _M = {}
 
 
+-- 获得HTTP请求和响应信息，以及路由信息
 local function get_full_log(ngx, conf)
     local ctx = ngx.ctx.api_ctx
     local var = ctx.var
@@ -77,6 +78,7 @@ end
 _M.get_full_log = get_full_log
 
 
+-- 获得原始HTTP报文
 function _M.get_req_original(ctx, conf)
     local headers = {
         ctx.var.request, "\r\n"
