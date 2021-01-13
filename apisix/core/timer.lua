@@ -31,6 +31,7 @@ local _M = {
 local function _internal(timer)
     timer.start_time = now()
 
+    -- 循环调用函数callback_fun，持续时间timer.each_ttl，
     repeat
         local ok, err = pcall(timer.callback_fun)
         if not ok then
@@ -45,6 +46,7 @@ local function _internal(timer)
     until timer.each_ttl and now() >= timer.start_time + timer.each_ttl
 end
 
+-- 调用函数_internal
 local function run_timer(premature, self)
     if self.running or premature then
         return
@@ -82,12 +84,14 @@ function _M.new(name, callback_fun, opts)
         running = false,
     }
 
+    -- 每隔0.5秒创建一个定时器，定时处理函数未run_timer
     local hdl, err = timer_every(opts.check_interval or 1,
                                  run_timer, timer)
     if not hdl then
         return nil, err
     end
 
+    -- 立即执行run_timer函数
     hdl, err = timer_at(0, run_timer, timer)
     if not hdl then
         return nil, err

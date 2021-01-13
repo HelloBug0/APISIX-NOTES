@@ -472,10 +472,12 @@ function _M.init_worker()
         require("apisix.plugins.prometheus.exporter").init()
     end
 
+    -- 如果不能通过HTTP请求的方式更新plugins信息，从etcd实时更新或从yaml文件中定时更新plugins信息
     if local_conf and not local_conf.apisix.enable_admin then
         init_plugins_syncer()
     end
 
+    -- 从etcd实时更新或从yaml文件中定时更新plugin_metadata信息
     local plugin_metadatas, err = core.config.new("/plugin_metadata",
         {automatic = true}
     )

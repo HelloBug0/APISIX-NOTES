@@ -77,6 +77,7 @@ end
 
 
 function _M.http_init_worker()
+    -- 从文件 /dev/urandom 中获得一个随机数，并将其设置未随机数种子
     local seed, err = core.utils.get_seed_from_urandom()
     if not seed then
         core.log.warn('failed to get seed from urandom: ', err)
@@ -86,24 +87,34 @@ function _M.http_init_worker()
     -- for testing only
     core.log.info("random test in [1, 10000]: ", math.random(1, 10000))
 
+    -- 配置工作进程事件通知机制，进程之间通信的共享内存地址未worker-events
     local we = require("resty.worker.events")
     local ok, err = we.configure({shm = "worker-events", interval = 0.1})
     if not ok then
         error("failed to init worker event: " .. err)
     end
+
+    -- 初始化服务发现模块，目前仅支持eureka
     local discovery = require("apisix.discovery.init").discovery
     if discovery and discovery.init_worker then
         discovery.init_worker()
     end
+
     require("apisix.balancer").init_worker()
     load_balancer = require("apisix.balancer").run
+
+    -- 初始化admin http 接口，用于根据接收到的HTTP请求的request uri，匹配对应的处理函数
     require("apisix.admin.init").init_worker()
 
+    -- 初始化定时器，设置循环定时器，处理所有的定时器事件
     require("apisix.timers").init_worker()
 
+    -- 初始化根据URI路由到站点信息的匹配树
     router.http_init_worker()
+    -- 从etcd中实时更新或者从yaml文件中定时更新service信息
     require("apisix.http.service").init_worker()
     plugin.init_worker()
+    -- 从etcd中实时更新或者从yaml文件中定时更新consumer信息
     require("apisix.consumer").init_worker()
 
     -- 如果配置读取方式是通过读取config.yaml文件，而不是通过读取etcd的方式，则设置定时器定时读取配置文件

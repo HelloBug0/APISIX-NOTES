@@ -28,6 +28,7 @@ local timers = {}
 local _M = {}
 
 
+-- 通过协程的方式循环调用所有的定时器事件
 local function background_timer()
     local threads = {}
     for name, timer in pairs(timers) do
@@ -57,6 +58,9 @@ end
 
 
 function _M.init_worker()
+    -- 每隔0.5秒调用一次函数background_timer，持续调用时间为1秒，每次调用失败睡眠5秒，调用成功睡眠1秒
+    -- 为了防止定时器事件到来时，background_timer仍在调用，在调用background_timer之前会设置全局变量self.running = true，调用结束设置self.running = false
+    -- 只有满足self.running == true才会调用background_timer
     local timer, err = core.timer.new("background", background_timer, {check_interval = 0.5})
     if not timer then
         core.log.error("failed to create background timer: ", err)

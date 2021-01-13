@@ -46,6 +46,7 @@ local _M = {
 }
 
 
+--[[ 从文件 /dev/urandom 中获得一个随机数 ]]
 function _M.get_seed_from_urandom()
     local frandom, err = open("/dev/urandom", "rb")
     if not frandom then
