@@ -101,6 +101,7 @@ do
     local pre_mtime
     local enabled_hooks = {}
 
+-- 配置文件中配置的函数的调用是放在mt._call中，该函数什么时候会被调用呢？
 local function apple_new_fun(module, fun_name, file_path, hook_conf)
     local log_level = hook_conf.log_level or "warn"
 
@@ -145,7 +146,21 @@ local function apple_new_fun(module, fun_name, file_path, hook_conf)
     module[fun_name] = t
 end
 
-
+--[[
+debug.yaml文件内容格式类似：
+hook_conf
+    enable: true
+    name: "myname"
+    log_level: "warn"
+    is_print_input_args: true
+myname
+    file_path1:
+        - fun_name1
+        - fun_name11
+        - fun_name111
+    file_path2:
+        - fun_name2
+]]
 function sync_debug_hooks()
     if not debug_yaml_ctime or debug_yaml_ctime == pre_mtime then
         return
@@ -201,6 +216,7 @@ end
 
 
 function _M.init_worker()
+    -- 进行debug的进程必须是工作进程，或者nginx运行在单进程模式，关闭主进程指令：master_process off;
     if process.type() ~= "worker" and process.type() ~= "single" then
         return
     end
