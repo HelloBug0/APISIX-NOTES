@@ -355,7 +355,7 @@ function _M.http_access_phase()
         ngx_ctx.api_ctx = api_ctx
     end
 
-    core.ctx.set_vars_meta(api_ctx)
+    core.ctx.set_vars_meta(api_ctx)-- 调用该函数后，请求相关的变量都可以通过api_ctx.var.XXX获得，具体参考core.ctx.lua
 
     -- load and run global rule
     if router.global_rules and router.global_rules.values
