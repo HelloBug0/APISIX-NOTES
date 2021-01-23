@@ -147,19 +147,22 @@ local function apple_new_fun(module, fun_name, file_path, hook_conf)
 end
 
 --[[
-debug.yaml文件内容格式类似：
-hook_conf
-    enable: true
-    name: "myname"
-    log_level: "warn"
-    is_print_input_args: true
-myname
-    file_path1:
-        - fun_name1
-        - fun_name11
-        - fun_name111
-    file_path2:
-        - fun_name2
+debug.yaml文件内容格式如下：
+hook_conf:
+  enable: false                 # enable or disable this feature
+  name: hook_phase              # the name of module and function list
+  log_level: warn               # log level
+  is_print_input_args: true     # print the input arguments
+  is_print_return_value: true   # print the return value
+
+hook_phase:                     # module and function list, name: hook_phase
+  apisix:                       # required module name
+    - http_access_phase         # function name
+    - http_header_filter_phase
+    - http_body_filter_phase
+    - http_log_phase
+
+#END
 ]]
 function sync_debug_hooks()
     if not debug_yaml_ctime or debug_yaml_ctime == pre_mtime then

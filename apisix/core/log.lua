@@ -42,6 +42,7 @@ local cur_level = ngx.config.subsystem == "http" and
 local do_nothing = function() end
 
 
+--[[ 通过调用该方法，可以在打印的日志前面添加指定的字段，调试某个功能时比较方便 ]]
 function _M.new(prefix)
     local m = {version = _M.version}
     setmetatable(m, {__index = function(self, cmd)
@@ -66,7 +67,7 @@ function _M.new(prefix)
     return m
 end
 
-
+--[[ require该模块之后，就可以通过log.error、log.warn、log.info等方式输入日志 ]]
 setmetatable(_M, {__index = function(self, cmd)
     local log_level = log_levels[cmd]
 
