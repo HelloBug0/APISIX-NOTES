@@ -349,6 +349,8 @@ function _M.http_access_phase()
     local api_ctx = ngx_ctx.api_ctx
 
     if not api_ctx then
+        -- tablepool可参考库：https://github.com/openresty/lua-tablepool
+        -- 从名称为api_ctx的表格池里获得一个表，第二个参数为数组元素的个数，第三个参数为字典元素的个数，如果池不存在或者池为空，仅就创建一个表
         api_ctx = core.tablepool.fetch("api_ctx", 0, 32)
         ngx_ctx.api_ctx = api_ctx
     end
