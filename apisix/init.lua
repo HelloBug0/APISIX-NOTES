@@ -122,17 +122,21 @@ function _M.http_init_worker()
         core.config.init_worker()
     end
 
+    -- 设置循环定时器，执行debug.yaml中指定的debug函数
     require("apisix.debug").init_worker()
+    -- 从etcd中实时更新或者从yaml文件中定时更新upstream信息
     require("apisix.upstream").init_worker()
 
     local_conf = core.config.local_conf()
     local dns_resolver_valid = local_conf and local_conf.apisix and
                         local_conf.apisix.dns_resolver_valid
 
+    -- 设置域名解析结果缓存，工作进程级别
     lru_resolved_domain = core.lrucache.new({
         ttl = dns_resolver_valid, count = 512, invalid_stale = true,
     })
 
+    -- 判断是否允许在响应头域里添加当前API网关的信息，如果允许，则网关头域信息为APISIX
     if local_conf.apisix and local_conf.apisix.enable_server_tokens == false then
         ver_header = "APISIX"
     end

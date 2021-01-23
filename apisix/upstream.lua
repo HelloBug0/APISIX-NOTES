@@ -85,6 +85,11 @@ function _M.check_schema(conf)
 end
 
 
+--[[ 从etcd中读取目录/upstrem中的信息，这个传入一个filter参数，对从etcd中获得的数据进行过滤
+filter函数作用：
+1、判断upstream中是否包含域名，如果包含，则置标志upstream.has_domain
+2、将所有的upstream信息格式化到upstream.value.nodes中
+]]
 function _M.init_worker()
     local err
     upstreams, err = core.config.new("/upstreams", {
