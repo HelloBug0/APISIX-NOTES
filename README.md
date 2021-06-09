@@ -1,1 +1,1 @@
-ALL my study notes of APISIX.
+ALL my study notes about APISIX.
